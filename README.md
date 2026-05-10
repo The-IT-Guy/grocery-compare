@@ -1,93 +1,98 @@
 # Grocery Compare
 
-**Compare grocery prices across H-E-B, Walmart, Sam's Club, and Costco by scanning a product barcode or entering a UPC code.**
-
-Built by [The IT Guy](https://calltheitguy.tech) • New Braunfels, TX
-
----
+Compare grocery prices across H-E-B, Walmart, Sam's Club, Costco, Target, and Sprouts by scanning a product barcode or entering a UPC code.
 
 ## Features
 
-- **Barcode Scanner** — CameraX + ML Kit barcode detection. Supports UPC-A, UPC-E, EAN-13, EAN-8.
-- **Parallel Price Lookup** — Checks all enabled stores simultaneously. Results stream in as each store responds.
-- **Price Comparison** — Side-by-side cards showing price, stock status, and fulfillment options per store.
-- **Savings Highlight** — Automatically identifies the best price and shows potential savings.
-- **Stock Status** — In Stock, Out of Stock, Limited Stock indicators per store.
-- **Fulfillment Options** — Pickup, Shipping, Delivery, In-Store Only badges.
-- **Membership Flags** — Sam's Club and Costco results show "Members" badge.
-- **Sort Options** — Price (low/high), Store Name, Availability.
-- **Search History** — Recent UPC lookups with quick re-search.
-- **Store Toggle** — Enable/disable individual stores in Settings.
-- **Dark Theme** — Full dark UI with store brand color accents.
+- **Barcode Scanner** — CameraX + ML Kit barcode detection. Supports UPC-A, UPC-E, EAN-13, EAN-8
+- **Parallel Price Lookup** — Checks all enabled stores simultaneously; results stream in as each store responds
+- **Price Comparison** — Side-by-side cards showing price, stock status, and fulfillment options per store
+- **Savings Highlight** — Automatically identifies the best price and shows potential savings
+- **Stock Status** — In Stock, Out of Stock, Limited Stock indicators per store
+- **Fulfillment Options** — Pickup, Shipping, Delivery, In-Store Only badges
+- **Membership Flags** — Sam's Club and Costco results show a "Members" badge
+- **Sort Options** — Price (low/high), Store Name, Availability
+- **Search History** — Recent UPC lookups with product name, timestamp, and lowest price
+- **Store Toggle** — Enable/disable individual stores in Settings
+- **GPS Location** — Detects your city/ZIP for location-aware pricing
+- **Dark Theme** — Full dark UI with per-store brand color accents
+
+## Supported Stores
+
+| Store | Lookup Method | Fulfillment |
+|---|---|---|
+| H-E-B | UPC API + HTML scrape | Pickup, Delivery |
+| Walmart | UPC API + HTML scrape | Pickup, Shipping, Delivery |
+| Sam's Club | UPC API + search link | Pickup, Shipping |
+| Costco | UPC API + search link | Shipping, In-Store |
+| Target | UPC API + HTML scrape | Pickup, Shipping, Delivery |
+| Sprouts | HTML scrape | Pickup, Delivery |
+
+## Tech Stack
+
+| Layer | Library |
+|---|---|
+| UI | Jetpack Compose + Material 3 |
+| Barcode | CameraX 1.3 + ML Kit |
+| Networking | OkHttp 4.12 |
+| HTML Parsing | Jsoup 1.17 |
+| Image Loading | Coil 2.5 |
+| Product IDs | Open Food Facts API + UPC Item DB |
+| Location | Google Play Services Location |
+| Architecture | ViewModel + StateFlow, Compose Navigation |
+| Build | Kotlin, Gradle (Kotlin DSL) |
+
+## Requirements
+
+- Android 8.0+ (API 26)
+- Target SDK 34
+- Physical device recommended for barcode scanning
+
+## Getting Started
+
+1. Clone the repo
+2. Open the `GroceryCompare` folder in Android Studio
+3. Allow Gradle to sync
+4. Connect a device or start an emulator (API 26+)
+5. Run the app
+
+### Permissions
+
+- `CAMERA` — barcode scanning
+- `INTERNET` — store price lookups
+- `ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION` — GPS-based location
+
+## How Pricing Works
+
+1. **Product identification** — UPC is resolved via Open Food Facts and UPC Item DB to get the product name and image
+2. **API pricing** — UPC Item DB offer data is used for stores that appear in its response
+3. **Web scraping fallback** — for stores without API pricing, the app scrapes the store's search results page using OkHttp + Jsoup with mobile browser headers and multiple CSS selectors
+4. **Search link fallback** — if scraping fails, a direct search URL is returned so the user can open the store's site manually
+
+All stores are queried in parallel via Kotlin coroutines.
 
 ## Architecture
 
 ```
 com.theitguy.grocerycompare/
 ├── data/
-│   ├── models/       # Store, StoreResult, ComparisonResult, etc.
-│   ├── scrapers/     # Per-store web scrapers (Walmart, HEB, Sam's, Costco)
-│   └── repository/   # PriceRepository - orchestrates parallel lookups
-├── viewmodel/        # CompareViewModel - MVVM state management
+│   ├── models/         # Store, StoreResult, ComparisonResult, UserLocation
+│   ├── scrapers/       # Per-store scrapers + UpcLookupService + HttpClientProvider
+│   ├── repository/     # PriceRepository — orchestrates parallel lookups
+│   └── location/       # LocationService
+├── viewmodel/          # CompareViewModel
 └── ui/
-    ├── theme/        # Material3 dark color scheme, typography
-    ├── components/   # StoreResultCard, SearchBar, BarcodeScannerView
-    └── screens/      # Home, Results, Scanner, Settings
+    ├── theme/          # Material3 dark color scheme, typography
+    ├── components/     # StoreResultCard, SearchBar, BarcodeScannerView, StoreLogo
+    └── screens/        # Home, Results, Scanner, Settings, StoreWebView
 ```
 
-**Stack:** Kotlin, Jetpack Compose, Material3, CameraX, ML Kit, OkHttp, Jsoup, Coil, Coroutines
+## Notes
 
-## Setup
+- Store websites change their HTML structure periodically — scrapers may need selector updates when stores redesign their frontends
+- Online prices may differ from in-store prices
+- Sam's Club and Costco require a valid membership for purchase
 
-### Prerequisites
-- Android Studio Hedgehog (2023.1.1) or newer
-- JDK 17
-- Android SDK 34
-- Physical device recommended (camera for barcode scanning)
+## Package
 
-### Steps
-1. Open the `GroceryCompare/` folder in Android Studio
-2. Wait for Gradle sync to complete
-3. Connect a device or start an emulator (API 26+)
-4. Run the app
-
-### Permissions
-- **CAMERA** — Barcode scanning
-- **INTERNET** — Store website lookups
-
-## How the Scrapers Work
-
-Each store has a dedicated scraper class that:
-
-1. **Builds a search URL** using the UPC code
-2. **Fetches the page** via OkHttp with mobile browser headers
-3. **Parses the response** using multiple strategies:
-   - Embedded JSON (`__NEXT_DATA__`, JSON-LD, internal APIs)
-   - HTML parsing with Jsoup (product cards, price elements)
-   - Fallback regex extraction for price data in scripts
-4. **Returns a StoreResult** with price, stock, fulfillment, image, and product URL
-
-All four stores are queried in parallel using Kotlin coroutines. Results appear as each store responds.
-
-## Important Notes
-
-- **Web scraping disclaimer:** Store websites change their HTML structure periodically. Scrapers may need updates when stores update their frontends. The multi-strategy approach (API → JSON → HTML → regex) provides resilience.
-- **Pricing accuracy:** Online prices may differ from in-store prices. Prices shown are from each store's website at time of lookup.
-- **Membership stores:** Sam's Club and Costco require valid membership for purchase. The app flags these results.
-- **Location-based results:** Some stores show different pricing by location. Results reflect the default/national pricing unless the store detects your location.
-
-## Extending
-
-### Adding a New Store
-
-1. Create a new scraper in `data/scrapers/` implementing `StoreScraper`
-2. Add the store to the `Store` enum in `Models.kt`
-3. Register it in `PriceRepository.scrapers`
-
-### Switching to Official APIs
-
-If a store provides an official API key, replace the HTML scraping in that store's scraper with proper API calls. The `StoreResult` model stays the same either way.
-
-## License
-
-Private / Internal Use — The IT Guy
+`com.theitguy.grocerycompare`
